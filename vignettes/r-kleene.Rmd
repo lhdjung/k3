@@ -1,0 +1,313 @@
+---
+title: "Missing values in R: a deep dive"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{r-kleene}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(k3)
+```
+
+**TODO: DECIDE WHETHER THIS SHOULD BETTER BE A BLOGPOST. IT GOES WAY BEYOND THE FUNCTIONS THAT k3 OFFERS: MOST OF IT IS NOT SPECIFICALLY ABOUT k3 AT ALL! MAYBE FUSE THIS WITH THE EXISTING BLOGPOST DRAFT "MISSING VALUES ARE NOT MAGIC" — THAT IS, WITH "CONCEPTUAL PROPAGATION MEANS CONDITIONAL PROPAGATION" ET CETERA? OR WOULD THAT BE TOO LONG? ALTERNATIVELY, DIVIDE UP ALL THIS WRITING INTO A SERIES OF BLOGPOSTS? THIS WOULD LIKELY BE MORE THAN TWO... MAYBE USE BOOKDOWN (OR A QUARTO EQUIVALENT) TO STRUCTURE AND PUBLISH IT?**
+
+**TODO: CHOOSE NEW VARIABLE NAMES FOR** `x1`, `x2`, **ETC.**
+
+**TODO: CONNECT `cor()`'S "PROPAGATE CONCEPTUALLY" WITH "CONCEPTUAL PROPAGATION MEANS CONDITIONAL PROPAGATION"**
+
+**TODO: SEARCH FOR "TODO"; THERE ARE SOME MORE BELOW. ALSO SEARCH FOR "[...]".**
+
+R natively implements [Kleene's strong three-valued logic](https://en.wikipedia.org/wiki/Three-valued_logic#Kleene_and_Priest_logics). This is a great asset that most languages don't have.
+
+Kleene logic adds a third truth value to the classic Boolean values, true and false. It represents an unknown or missing value — R calls it `NA` for "not available". Instead of treating `NA` as a nuisance, we should try to better understand it.
+
+This article shines a light on the key ideas behind Kleene logic, how it is implemented in R, and how it branches out to non-logical data types. It also compares `NA` to its alternatives in more mainstream programming languages: Boolean logic and null values.
+
+## Introduction to missing values
+
+The idea of a programming language not implementing Boolean logic will, at first, seem bizarre to users of more mainstream languages. This section explains why R features a non-classical, three-valued system of logic instead.
+
+First, R sometimes needs to emulate Boolean logic. It excludes `NA` from use cases that require definite true or false answers, such as conditions. Note that this error says "TRUE/FALSE", not "Boolean":
+
+```{r error=TRUE}
+if (NA) {
+  # ...
+}
+```
+
+`NA` is a "logical" value, just like `TRUE` and `FALSE`. Logical is the data type that R uses in place of Booleans. The presence of `NA` is what distinguishes logicals in R from Booleans in other languages, and Kleene logic from Boolean logic. It was originally called "u" for "unknown" [TODO: INSERT KLEENE CITATION], but I use R notation here.
+
+A number of technologies implement Kleene logic, but few programming languages do:
+
+![](images/kleene_logic_implementations.drawio.svg)
+
+The reason is that most languages are not mainly concerned with processing scientific data. R and Julia, however, need a way to represent missing values: pieces of information that should be in the data, but are absent for some reason. They do so by using a placeholder. In R, this is `NA`. It has different flavors, one for each base data type. This allows the basic rationale of Kleene logic to branch out into other data types; more on this below.
+
+**TODO: EXPLAIN HOW `NA` CONCEPTUALLY EXTENDS INTO NON-LOGICAL DATA TYPES — BEFORE GIVING EXAMPLES OF `NA` IN SUCH DATA TYPES!**
+
+Programmers coming from other languages might be tempted to compare `NA` to other special constants that signify absence, such as `null` or `undefined`. However, `NA` is actually very different from these. Whereas `null` typically represents the known absence of some other language object, `NA` stands for the existence of some value *outside* the language that just so happens to be unknown.
+
+Mainstream language users may think this is a strange distinction. If a value is "unknown", doesn't that mean it's absent from the data? Yes, but only because the data records happen to be imperfect. Somewhere out in the world, the true value behind each instance of `NA` hides from our view. Ignorant about these values as we are, all we can do is to represent them by a sentinel value that serves to remind us of what we don't know.
+
+Strictly speaking, constants like `NA` are "explicit missing values": they are unknown, but they are still represented in the data. The complement is "implicit missing values" which are not part of the data in any way, but the data are incomplete without them. See [*R for Data Science*, ch. 18.3](https://r4ds.hadley.nz/missing-values#sec-missing-implicit), which also shows some useful ways to make implicit missing values explicit.
+
+## Missing values of any type
+
+[...]
+
+All this is quite different from `null` in terms of ontological commitment, but it also carries implications for how `NA` is treated. Most operations assume that it really is a proper value, although sadly not a very specific one:
+
+```{r}
+NA * 5
+NA ^ 2
+NA ^ 0
+```
+
+In the first two examples, the result depends on the value behind `NA`. It is unknown, so the result is also `NA`. The third example is different: `NA ^ 0` would return `1` for every possible value that `NA` could represent. The result doesn't depend on the unknown value, so `1` is known to be the correct result.
+
+Since `NA` properly exists, it has length 1 and can be part of a vector:
+
+```{r}
+length(NA)
+c(2, NA, 7)
+```
+
+Such reasoning is clearly different from handling `null` values, and from dealing with whatever Javascript does. In fact, R also has a `NULL` object, and it behaves nothing like `NA`:
+
+```{r}
+NULL * 5
+NULL ^ 2
+NULL ^ 0
+```
+
+These operations return a length-zero value, just like `NULL`. It implies that there is no value to begin with, not even purely on the language level.
+
+```{r}
+length(NULL)
+length(NULL * 5)
+
+# Can't hold `NULL` in a vector:
+c(2, NULL, 7)
+```
+
+The last point is key. `NA` is different from `NULL` because it conceptually represents a value outside of the language itself. Kleene logic points to Boolean logic as a higher-level conceptual abstraction. By contrast, `NULL` stands for the nonexistence of some value in the language.
+
+This figure takes logicals as an example. Solid arrows can be read as "represents", dashed arrows as "may represent":
+
+![](images/kleene_logic_levels.drawio.svg)
+
+In and of itself, `NA` is an R object, so it is part of how values are represented in the language. It may stand for either of the two higher-level Boolean truth values, true and false; but which of them it represents is unknown. `NULL` does not relate to any higher-level concepts at all.
+
+On the level of logical R objects, there are `TRUE`, `NA`, and `FALSE`. I will call this the *object level*, inspired by a [classic blogpost](https://www.lesswrong.com/tag/object-level-and-meta-level). Such objects conceptually represent real-world values that are either true or false — even if information about them is missing, and the corresponding object-level value is `NA`. Since these other entities are conceptual abstractions rather than language features, they only exist on the *concept level*.
+
+## Conceptual propagation
+
+A core tenet of missing values in R says that `NA` will ["propagate conceptually"](https://stat.ethz.ch/R-manual/R-patched/library/stats/html/cor.html). This means that a function returns `NA` because the value that it's meant to compute cannot be determined from the input due to missing values.
+
+Often, a single `NA` will make the result unknown. An example is `mean()` which correctly returns `NA` by default whenever the input contains any `NA`: since every single value factors into the mean, the result is unknown if even a single input value is. Many other functions work the same way, such as `min()` and `max()`.
+
+However, we have now seen a few exceptions. There are functions that sometimes return non-`NA` values even if their input contains missing elements. This seems just as correct as `mean()` always returning `NA` in this case. The basic reasoning is always the same: can the function answer the user's question given some particular input? With `mean()`, that's never possible. For some other functions, it depends on the input.
+
+## Kleene correctness: how functions should behave
+
+There is a clear pattern in the examples above. When the input contains `NA`, the return value is often `NA`, as well — but only if the missing value makes the result impossible to determine.
+
+It would be wrong to return `NA` when the result is known despite `NA` in the input, as in `NA | TRUE`, `NA ^ 0`, and so on. Conversely, it would also be wrong to return a non-missing value when `NA` really does make it impossible to determine the result. Examples would be `NA & TRUE`, `NA ^ 2`, and any use of `+`, `-`, `*`, `/`, `mean()`, and many other operations when they take one or more `NA` inputs.
+
+All of this comes down to a desirable property of algorithms that may handle missing values. I will call this property *Kleene correctness* after Stephen Cole Kleene, the mathematician who created the underlying three-valued logic. It is defined as follows.
+
+> An algorithm is Kleene-correct if and only if (i) it returns a missing value whenever the result cannot be determined due to one or more missing values in the input, and (ii) it returns a non-missing value whenever this value can be determined to be the result.
+
+A more intuitive wording might be "return a missing value if necessary, return a non-missing value if possible".
+
+On this basis, we can assert a general rule for designing algorithms — again assuming that they may have to handle missing values. Algorithms should behave in a Kleene-correct way by default. They may still have optional arguments that allow users to impose specific assumptions on the missing values, which may then cause a non-missing value to be returned. However, this should always be the result of explicit choices made by the users. Such options accrue assumptions about missing values that may or may not be well-supported in any given case. Kleene-correct algorithms, by contrast, are always free from any further assumptions. They take missing values as missing values, remaining agnostic about their unknown true states.
+
+We cannot expect software to think for ourselves and decide what the best way to handle missing values might be in any given situation. However, we can and should expect it to answer our questions correctly. In some cases, the answer might be an admission of ignorance due to an insufficient basis for computing the requested result. This is good behavior: it is Kleene-correct.
+
+Readers may object that "Kleene correctness" is nothing new. It is simply correctness in the context of missing values. For example, `NA ^ 2` cannot be anything other than `NA`, just as `NA ^ 0` must be `1`. If the idea of missing values is to be taken seriously at all, any other results would be wrong. I agree, but I think that correctly handling missing values is underrated, so it might be useful to reaffirm the principle underlying such operations by explicitly asserting it. In addition, it won't hurt to credit the first person who did so, Stephen Cole Kleene.
+
+All R functions discussed so far are Kleene-correct, but this does not apply to R functions in general. Other statistical software is similar in this regard. We will come back to Kleene-incorrect functions in [TODO: NAME PART / CHAPTER / WHATEVER THAT IS NOW THE "IMPLEMENTATION SHORTCOMINGS" SECTION]. For now, an important corollary is that all algorithms which treat missing values on the object level are trivially Kleene-correct as long as they correctly discriminate such objects. The first part of the definition is not applicable to them because they are never obligated to return missing values: such algorithms do not ask about the unknown true states of missing values, so they never run into cases where "unknown" inputs make it impossible to determine their results.
+
+As an example,`identical(NA, TRUE)` returning `FALSE` is Kleene-correct because `identical()` is not about what `NA` may represent. Instead, it specifically asks whether two R objects are equal as such. On this level, `NA` is just another object, and it is different from `TRUE`. Compare this to `NA == TRUE` returning `NA`, which is also Kleene-correct because `==` works on the conceptual level. It wants to know what its inputs mean in the real world, but this is unknown with regards to `NA`, so it cannot tell whether `NA` is equal to `TRUE` or to `FALSE`.
+
+All object-level functions I am aware of are Kleene-correct. The only one that seems problematic at all with regard to missing values is `which()`, and this is only because its way of handling `NA`s can be surprising, as shown below. However, there are quite a few concept-level functions that do not satisfy Kleene correctness. This is likely because handling missing values on the concept level tends to be more difficult — sometimes by a considerable margin. Another reason might be that there are simply much fewer object-level functions. This is to be expected, given that thinking in terms of known and unknown values is the very purpose of Kleene logic.
+
+## Implementation shortcomings
+
+The implementation of Kleene logic in R is quite good, but not perfect. Here are some operations that arguably handle `NA` incorrectly, most of them from base R. [TODO: CHANGE BACK TO "some base R operations" UNLESS `dplyr::filter()` IS ACTUALLY INCLUDED.] I also make some suggestions for improving their behavior. Unsurprisingly, it all comes down to distinguishing between the object level and the concept level.
+
+### Ordering
+
+`order()` has an `na.last` argument that is `TRUE` by default, so missing values go to the end of the output. Setting `na.last = FALSE` places them at the start instead, and `na.last = NA` removes them:
+
+```{r}
+x1 <- c(4, 2, 5, 7, NA, NA)
+order(x1)
+
+# Indexing makes the behavior more apparent
+x1[order(x1)]
+x1[order(x1, na.last = FALSE)]
+x1[order(x1, na.last = NA)]
+```
+
+This default imposes substantial and unjustified assumptions on the missing values, namely that each of them is greater than the greatest known value. The `na.last = FALSE` option is the same in reverse, and `na.last = NA` simply ignores the issue, like `na.rm = TRUE` in other functions.
+
+As `order()` needs to put the `NA`s somewhere, and any such decision implies an assumption about the unknown values they represent, it cannot really deal with missing values. Compare this to conditions, which emulate Boolean logic and thus have no use for missing values, either. Conditions, however, have a more resolute way of dealing with `NA`: they throw an error.
+
+Perhaps this would be desirable for `order()`, as well. The k3 package provides `order2()`, a thin wrapper around `order()`. It throws an error by default if any values are missing. There is still an `na.last` argument, but it is `NULL` by default. This allows users to opt into assumptions about the true values behind the `NA`s without silently burdening the analysis with any specific default assumptions.
+
+```{r error=TRUE}
+library(k3)
+
+x1[order2(x1)]
+
+x1[order2(x1, na.last = TRUE)]
+x1[order2(x1, na.last = FALSE)]
+x1[order2(x1, na.last = NA)]
+```
+
+### `which()`-ing
+
+The useful `which()` function poses a particular riddle. `which()` works on the object level: it only checks which elements of a vector are the R object `TRUE`, and then returns their indices. As a consequence, it treats `NA` just like `FALSE`.
+
+Hadley Wickham says that this behavior is unexpected. He compares `which()` to logical subsetting, that is, indexing like `x[x > 5]`. Both operations fulfill a similar purpose: `which()` returns the indices of the `TRUE` values, so these can later be used for integer subsetting, as in `x[c(3, 7)]`. However, logical subsetting returns `NA` for each `NA` in the index, but `which()` ignores any `NA`s ([*Advanced R*, ch. 4.5.8](https://adv-r.hadley.nz/subsetting.html#boolean-algebra-versus-sets-logical-and-integer)).
+
+```{r}
+x1
+
+# Logical subsetting propagates `NA`...
+x1[x1 > 2]
+
+# ...but `which()` drops it:
+which(x1 > 2)
+```
+
+Hadley considers this surprising because the name "which" doesn't suggest that missing values are ignored. Moreover, I think this behavior puts `which()` in a strange spot overall with regard to missing values.
+
+Its use case might suggest that it propagates `NA` conceptually, as logical subsetting clearly does. If users falsely expect it to do so, the function as they use it effectively holds an unjustified assumption — all missing values are secretly `FALSE`. This is similar to `order()`'s implicit default assumption of large `NA`s, as per `na.last = TRUE`.
+
+However, if `which()` is expected to propagate `NA` conceptually, the question is how. Logical subsetting has it easy: its output has the same length as its input, so it can just mirror each `NA` in the input by one in the output, at the same position. For `which()`, it is not quite as straightforward. The challenge here is to decide whether or not to include the indices of `NA` elements in the output vector.
+
+The seemingly obvious solution is to return one `NA` for each input `NA`. Yet including the index in the output or not is a genuinely Boolean, true-or-false question. An output vector with `NA` elements would have some conceptual implications, but it may actually transport the wrong idea. It would seem to suggest that there are certain unknown indices of true values in the input. However, this is not correct: what is unknown, rather, is whether the values in question are true.
+
+All of this points toward an uncomfortable conclusion: there is no way for `which()` to translate the missingness of any input elements into the output. In other words, conceptual propagation is not an option. The very design of the function rules it out. It is more similar to `order()` than to logical subsetting in this regard.
+
+### A more explicit `which()`
+
+So what to do? If `which()` is meant to operate on the conceptual level, it should throw an error when given `NA` elements because it can't handle them in this way. However, its unintuitive, object-level behavior is admittedly well documented, and users may already be familiar with it.
+
+The best way would be to throw an error by default, but to add an optional argument that controls how `NA`s are treated. Users could then choose to have `NA`s count as `TRUE` or `FALSE`, without any default bias toward either. This would make `which()` more strict and straightforward, while allowing users to opt into certain assumptions about missing values.
+
+Another argument option could be to treat `NA` like `FALSE` but with a warning when it happens. This would be a compromise between the current object-level behavior and the inherent logic of missing values.
+
+This code demonstrates the solution using a wrapper around the existing `which()` function. Consistent with using different case conventions for two existing arguments, `arr.ind` and `useNames`, the new argument is called `na_treat`.
+
+TODO: REPLACE THIS BY `k3::which2()`
+
+```{r error=TRUE}
+which2 <- function(x, arr.ind = FALSE, useNames = TRUE,
+                   na_treat = c("error", "warning", "true", "false")) {
+  na_treat <- match.arg(na_treat)
+  if (!anyNA(x)) {
+    return(which(x, arr.ind = arr.ind, useNames = useNames))
+  }
+  if (na_treat == "error") {
+    stop(paste(
+      "`NA` is not allowed by default. Use `na_treat` to",
+      "handle it like `TRUE` or `FALSE`, or to get a",
+      "warning instead."
+    ))
+  } else if (na_treat == "warning") {
+    warning("`NA` is present but ignored.")
+  } else if (na_treat == "true") {
+    x[is.na(x)] <- TRUE
+  } # "false" works like the existing `which()`
+  which(x, arr.ind = arr.ind, useNames = useNames)
+}
+
+which2(c(TRUE, FALSE, NA))
+
+which2(c(TRUE, FALSE, NA), na_treat = "warning")
+
+which2(c(TRUE, FALSE, NA), na_treat = "false")
+
+which2(c(TRUE, FALSE, NA), na_treat = "true")
+```
+
+### Median computation
+
+Unlike the arithmetic mean, the median is famously robust to outliers. This has special implications when some values are missing. For example, a vector like `c(1, 1, NA)` has a known median of `1`, no matter which unknown value is represented by the `NA`.
+
+However, the `median()` function has no way to know this. It simply returns `NA` by default whenever the input vector contains any missing values:
+
+```{r}
+median(c(1, 1, NA))
+```
+
+The [naidem](https://lhdjung.github.io/naidem/) package solves this problem. It offers `median2()` as a Kleene-correct alternative to `median()`. A more general solution, [TODO: INSERT NAME OF naidem FUNCTION `median_table()` (?) ONCE IT'S PART OF A RELEASED VERSION] counts the `NA`s that need to be ignored to compute the median of the remaining values. To wit, in `c(1, 1, NA, NA)`, only a single `NA` has to be ignored so that the rest of the vector has a known median, as above.
+
+`median_table()` tells us how far from known the median is. It also enables us to include as much of our data as possible; perhaps even some of its unknown elements. I think this is better than simply ignoring all missing values, not knowing how much they impact the median estimate. To get the minimal and maximal possible median values, call `median_range()`.
+
+A suboptimal way of dealing with missing values in this area is by no means exclusive to R. Other software that implements the median has the same issue. To the best of my knowledge, there had been no Kleene-correct median algorithm before naidem was released.
+
+### Testing for infinite values
+
+R has the `Inf` and `-Inf` objects to represent positive and negative infinity. Their presence can be detected by `is.infinite()`, which has a near-opposite in `is.finite()`. Despite some confusing details, the bottom line is that both functions return `FALSE` for most objects, including `NA`:
+
+```{r}
+is.finite(NA)
+is.infinite(NA)
+```
+
+The documentation for `is.finite()` defines "finite" as "not infinite and not missing". This is surprisingly ambiguous between the conceptual and object levels. As a result, the desirable behavior of these functions depends on the level on which they are meant to operate:
+
+-   In terms of the real-world values to which R objects conceptually point, `NA` stands for an unknown value. It might be positive or negative infinity, or a finite value. (This is why `NA * 0` returns `NA` instead of `0`: `Inf * 0` would return `NaN`.) Accordingly, if these functions operate on the concept level, `is.finite(NA)` and `is.infinite(NA)` should return `NA`. They would be comparable to operators such as `+`, `-`, etc., which likewise propagate missingness conceptually.
+
+-   In terms of R objects themselves, `NA` is different from `Inf` and `-Inf`. Accordingly, if these functions operate on the object level, `is.finite(NA)` should return `TRUE`, and `is.infinite(NA)` should return `FALSE`. They would be comparable to `is.na()` and `identical()`, which only consider R objects as such, without reasoning about which real-world entities they may represent.
+
+The mathematical notion of infinity is not about unknown values, so it doesn't distinguish between these levels. This makes the definition quoted above inconsistent with standard usage, and perhaps misleading to unsuspecting users. In sum, there is a need to clarify the scope of these functions.
+
+### Spurious missing values: creating `NA` *ex nihilo*
+
+This article has discussed `NA` as a value that is "missing" in the sense of being unknown. For better or worse, however, R also sometimes uses `NA` as a return value when an operation has no defined result. Rather than handling some given `NA`s imperfectly, this issue is about newly introducing `NA`s where none existed before.
+
+I will call such language objects "spurious missing values": `NA`s that cannot be interpreted as unknown values. It is possible that spurious missing values can come about through ways other than described above, but if so, I am not aware of them.
+
+Indexing out of bounds returns `NA`:
+
+```{r}
+x2 <- c("a", "b", "c", "d", "e")
+x2[10]
+```
+
+One may wish for such a clearly invalid operation to throw an error instead. Apart from the lack of explicitness, this also creates ambiguity about the `NA` object. An unrelated problem with indexing leads to `NA` not reliably indicating an unknown value!
+
+Failed coercion likewise produces new `NA`s:
+
+```{r}
+x3 <- c("1", "2", "foo", "bar")
+as.numeric(x3)
+```
+
+A less obvious source of spurious missing values is data frame transformation. [*R for Data Science*, ch. 5.3.1](https://r4ds.hadley.nz/data-tidy#sec-billboard) gives an example where pivoting a table creates many new rows, but one variable doesn't have data for all of them. Those cells are filled with `NA`s by default. Hadley et al. suggest dropping such rows, with an intriguing rationale: "These `NA`s don’t really represent unknown observations; they were forced to exist by the structure of the dataset [...]."
+
+In defense of R, there is a common denominator with Kleene logic. When a vector is indexed out of bounds, a value is "missing" in some sense — it is requested by the operation but absent from the data. The same is true when coercing a string like `"foo"` to numeric.
+
+However, the conceptual link is tenuous because this other notion of missingness has nothing to do with whether a value is unknown. There simply is no tenth element of `x2`, and there is no way to squeeze a number out of `"foo"`. These facts are perfectly obvious — no information is hidden. Should `x2[10]` really return an object that is meant to represent unknown values?
+
+More generally, I think the very idea of missing values implies that they cannot be created *ex nihilo*. Missing values are always a product of incomplete information. They arise out of the friction of collecting data about the real world and storing them in not-so-real software.
+
+Thus, missing data representations in software can only ever refer back out into the real world. They cannot, in this sense, be newly introduced after the data were entered into the system. When they are returned by computations, these computations must have taken missing values as inputs, such that a lineage of missingness can be traced back to the point where missing values were first represented by objects such as `NA`. Most often, this original event will be data import, but the same effect can be produced by turning implicit missing values into explicit ones, as `tidyr::complete()` does.
+
+So if returning `NA` is not desirable behavior in these cases, what is? Perhaps errors are the best solution. Alternatively, `NaN` seems like a good fit when the output is numeric: `as.numeric("1")` has a defined result, but `as.numeric("foo")` doesn't. This is similar to [...]
+
+TODO: DISCUSS `NaN` IN THIS CONTEXT AND BEMOAN THE LACK OF ANALOGUES IN OTHER DATA TYPES.

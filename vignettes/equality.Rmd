@@ -1,0 +1,123 @@
+---
+title: "Equality and equivalence"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{equality}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(k3)
+```
+
+Testing R objects for equality is tricky. The `==` operator propagates missing values:
+
+```{r}
+NA == 3
+
+NA == NA
+```
+
+It treats `NA` as a placeholder for an unknown value. If one or both values are unknown, we can't tell whether or not they are equal. The `NA` result is logically correct. Data are often an incomplete representation of certain real-world facts, and transparency demands that the data reveal this lack of information.
+
+Yet sometimes, our focus is on the data themselves, not on what they may point to in the real world. Rather than asking "Are A and B the same?", we might want to compare *data record* A with *data record* B.
+
+Questions we may ask include:
+
+-   Are A and B equally recorded? In other words: are both `NA`, or else, are both known and equal?
+
+-   Are both A and B missing?
+
+-   Are both A and B known, that is, not missing?
+
+-   Do A and B have the same missingness status? In other words: are both `NA`, or else, are both known?
+
+## Test for equivalence
+
+Use `equivalent()` to test which values evaluate equally:
+
+```{r}
+x1 <- c(1, NA, 1, NA)
+x2 <- c(1, NA, 2, 5)
+
+equivalent(x1, x2)
+```
+
+`1` and `1` are the same value, so they are equivalent. The same is true of `NA` and `NA`. However, `1` and `2` are different, and so are `NA` and `5`. Recall that this function is not concerned with unknown values behind `NA` — it just checks which data are recorded in R.
+
+For convenience, the binary operator `%eq%` can be used instead:
+
+```{r}
+x1 %eq% x2
+```
+
+If performance is an issue and you only want to compare a single pair of values, use the faster `equivalent_scalar()` instead. It will fail unless both inputs have length 1. The operator `%eq1%` works the same way.
+
+### Going beyond base R
+
+There is nothing like `equivalent()` in base R. `NA == NA` returns `NA` because `==` cares about what these values represent, which is unknown. This is a great way of relating data to the real world. However, `NA` and `NA` are still equal as R objects!
+
+Users tend to call `identical()` instead, which is extremely strict. As soon as two missing values have different types, it will see them as different. Even if both are numbers, `identical()` returns `FALSE` if they are integer (`NA_integer_`) and double (`NA_real_`):
+
+```{r}
+# Same type of `NA`
+identical(NA, NA)
+identical(NA_integer_, NA_integer_)
+
+# Different types of `NA`
+identical(NA, NA_integer_)
+identical(NA_real_, NA_integer_)
+identical(NA_real_, NA_character_)
+```
+
+In summary, `==` doesn't acknowledge that two missing values are equal as such, and `identical()` doesn't acknowledge that two missing values of different types are equal at all.
+
+`equivalent()` steers a middle course: by default, it considers any two missing values to be equal. This avoids both extremes, focusing on shared missingness instead. Likewise, one missing and one known value are not equivalent.
+
+### Strict-mode comparison
+
+In base R, double vectors can test equal to integer vectors using `==`. The default for `equivalent()` is the same:
+
+```{r}
+x2
+typeof(x2)
+
+x3 <- c(3L, NA, 1L, 5L)
+typeof(x3)
+
+equivalent(x2, x3)
+```
+
+Override this default with `strict = TRUE`:
+
+```{r}
+equivalent(x2, x3, strict = TRUE)
+```
+
+Here, no values can be equal to begin with, simply because they have different types — even the `NA`s; `strict` simply applies `identical()`. This can be useful if the data type is important but not known in advance.
+
+### Code schema
+
+Below is a schema of the way `equivalent()` compares each pair of values. Note that the actual implementation is more efficient (and iterates over pairs, unlike here).
+
+```{r results='hide'}
+function(x, y, strict = FALSE) {
+  if (strict) {
+    identical(x, y)
+  } else if (is.na(x) && is.na(y)) {
+    TRUE
+  } else if (is.na(x) || is.na(y)) {
+    FALSE
+  } else {
+    x == y
+  }
+}
+```
